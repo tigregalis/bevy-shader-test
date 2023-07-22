@@ -61,14 +61,16 @@ fn spawn(
 ) {
     commands.spawn(Camera2dBundle::default());
 
-    let size = Vec2::splat(800.0);
-    let shadow_size = size + Vec2::splat(70.0);
-    let mesh: Mesh = Quad::new(shadow_size).into();
+    let flat_size = Vec2::splat(800.0);
+    let edge_size = Vec2::splat(70.0);
+    let full_size = flat_size + edge_size;
+    let mesh: Mesh = Quad::new(full_size).into();
     let mesh = Mesh2dHandle(meshes.add(mesh));
 
     let material = materials.add(CustomMaterial {
         color: Color::rgba(0.03, 0.03, 0.0, 0.6),
-        size: shadow_size,
+        flat_size,
+        edge_size,
     });
     let entity = commands
         .spawn(MaterialMesh2dBundle {
@@ -83,7 +85,7 @@ fn spawn(
         .spawn(SpriteBundle {
             sprite: Sprite {
                 color: Color::WHITE,
-                custom_size: Some(size),
+                custom_size: Some(flat_size),
                 ..default()
             },
             ..default()
@@ -107,9 +109,12 @@ fn synchronise_sizes(
         let Some(mesh) = meshes.get_mut(&mesh.0) else {
             continue;
         };
-        let shadow_size = sprite.custom_size.unwrap() + Vec2::splat(70.0);
-        *mesh = Quad::new(shadow_size).into();
-        material.size = shadow_size;
+
+        let flat_size = sprite.custom_size.unwrap();
+        let edge_size = material.edge_size;
+        let full_size = flat_size + edge_size;
+        *mesh = Quad::new(full_size).into();
+        material.flat_size = flat_size;
     }
 }
 
@@ -155,10 +160,10 @@ fn pick(
 ) {
     if mouse.just_pressed(MouseButton::Left) {
         for (entity, transform, sprite) in query.iter() {
-            let size = sprite.custom_size.unwrap();
+            let quadrant = sprite.custom_size.unwrap() / 2.0;
             let origin = transform.translation.truncate();
-            let top_left = origin + Vec2::new(-size.x / 2.0, -size.y / 2.0);
-            let bottom_right = origin + Vec2::new(size.x / 2.0, size.y / 2.0);
+            let top_left = origin - quadrant;
+            let bottom_right = origin + quadrant;
             let rect = Rect {
                 min: top_left,
                 max: bottom_right,
@@ -195,18 +200,16 @@ fn resize(
         let Some((transform, sprite)) = query_iter.next() else {
             break None;
         };
-        {
-            let size = sprite.custom_size.unwrap();
-            let origin = transform.translation.truncate();
-            let top_left = origin + Vec2::new(-size.x / 2.0, -size.y / 2.0);
-            let bottom_right = origin + Vec2::new(size.x / 2.0, size.y / 2.0);
-            let rect = Rect {
-                min: top_left,
-                max: bottom_right,
-            };
-            if rect.contains(cursor.0) {
-                break Some(sprite);
-            }
+        let quadrant: Vec2 = sprite.custom_size.unwrap() / 2.0;
+        let origin = transform.translation.truncate();
+        let top_left = origin - quadrant;
+        let bottom_right = origin + quadrant;
+        let rect = Rect {
+            min: top_left,
+            max: bottom_right,
+        };
+        if rect.contains(cursor.0) {
+            break Some(sprite);
         }
     };
     let Some(size) = sprite.as_deref_mut().and_then(|sprite| sprite.custom_size.as_mut()) else {
@@ -248,7 +251,9 @@ struct CustomMaterial {
     #[uniform(0)]
     color: Color,
     #[uniform(0)]
-    size: Vec2,
+    flat_size: Vec2,
+    #[uniform(0)]
+    edge_size: Vec2,
 }
 
 impl Material2d for CustomMaterial {
