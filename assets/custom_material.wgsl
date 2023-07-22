@@ -20,7 +20,8 @@ struct MeshVertexOutput {
 
 struct CustomMaterial {
     color: vec4<f32>,
-    size: vec2<f32>,
+    flat_size: vec2<f32>,
+    edge_size: vec2<f32>,
 };
 
 @group(1) @binding(0)
@@ -31,34 +32,45 @@ fn fragment(
     mesh: MeshVertexOutput,
 ) -> @location(0) vec4<f32> {
     let color = material.color;
-    let size = material.size;
+    let flat_size = material.flat_size;
+    let edge_size = material.edge_size;
+    let full_size = flat_size + edge_size;
 
-    // the size matters because we want the shadow blur to be in physical pixels
-    // but uv is relative to the shadow blur
-    // let's imagine that we want 100px of blur
-    // if size = 1000, then that's 10%
-    // more generally
-    let lx = 70.0 / size.x;
-    var ax: f32;
-    if mesh.uv.x <= lx {
-      ax = smoothstep(0.0, 1.0, mesh.uv.x / lx);
-    } else if 1.0 - mesh.uv.x <= lx {
-      ax = smoothstep(0.0, 1.0, (1.0 - mesh.uv.x) / lx);
-    } else {
-      ax = 1.0;
-    }
+    // the size matters because we want the shadow blurred edge to be in physical pixels
+    // but uv is relative to the mesh size
+    // we ensure, outside, in Bevy-land, that
+    // the mesh size is the "shadow-casting object"'s size plus the blurred edge
+    // let's imagine that we want 100px of blurred edge, for an 800px object, so that's 1000px
+    // if mesh size = 1000px, then that's 10%
+    // or more generally, the blurred edge size in 0..1 scale is the blurred edge size in pixels / total mesh size in pixels
+    // here, edge_x/edge_y is the blurred edge size in the 0..1 scale
 
-    let ly = 70.0 / size.y;
-    var ay: f32;
-    if mesh.uv.y <= ly {
-      ay = smoothstep(0.0, 1.0, mesh.uv.y / ly);
-    } else if 1.0 - mesh.uv.y <= ly {
-      ay = smoothstep(0.0, 1.0, (1.0 - mesh.uv.y) / ly);
-    } else {
-      ay = 1.0;
-    }
+    let edge = edge_size / full_size;
+    let ax = smoothstep(0.0, 1.0, symmetric_top(mesh.uv.x) / edge.x / 2.0);
+    let ay = smoothstep(0.0, 1.0, symmetric_top(mesh.uv.y) / edge.y / 2.0);
 
+    // `min(ax, ay)` gives sharp corners
+    // `ax * ay` gives rounded corners
+    // blending the two seems to give the nicest-looking results
     var a = mix(ax * ay, min(ax, ay), 0.3);
 
     return vec4<f32>(color.rgb, a * color.a);
+}
+
+// `v` is a value in the range between 0..0.5..1, and we want it to be a value between 1..0..1
+// e.g. 0.2 becomes 0.6, 0.5 becomes 0, 0.6 becomes 0.2
+fn symmetric_bottom(v: f32) -> f32 {
+    return 2.0 * abs(v - 0.5);
+}
+
+// `v` is a value in the range between 0..0.5..1, and we want it to be a value between 0..1..0
+// e.g. 0.2 becomes 0.4, 0.5 becomes 1, 0.6 becomes 0.8
+fn symmetric_top(v: f32) -> f32 {
+    return invert(symmetric_bottom(v));
+}
+
+// converts a value `v` from 0..1 to 1..0
+// e.g. 0.3 becomes 0.7
+fn invert(v: f32) -> f32 {
+    return 1.0 - v;
 }
