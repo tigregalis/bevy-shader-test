@@ -1,21 +1,15 @@
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
-
 use bevy::{
     asset::ChangeWatcher,
     prelude::{shape::Quad, *},
     reflect::{TypePath, TypeUuid},
     render::render_resource::{AsBindGroup, ShaderRef},
     sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle, Mesh2dHandle},
-    window::{PrimaryWindow, WindowResized, WindowResolution},
 };
+use bevy_shader_test::{set_window_plugin, WindowRestorePlugin};
 
 fn main() {
-    let settings = std::fs::read_to_string("window.json")
-        .ok()
-        .and_then(|s| serde_json::from_str::<WindowSettings>(&s).ok())
-        .unwrap_or_default();
     App::new()
         .add_plugins((
             DefaultPlugins
@@ -25,25 +19,12 @@ fn main() {
                     }),
                     ..Default::default()
                 })
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        position: settings.position,
-                        resolution: settings.resolution,
-                        ..default()
-                    }),
-                    ..default()
-                }),
+                .set(set_window_plugin()),
             Material2dPlugin::<CustomMaterial>::default(),
+            WindowRestorePlugin,
         ))
         .add_systems(Startup, spawn)
-        .add_systems(PreUpdate, watch_window)
         .run();
-}
-
-#[derive(Resource, Serialize, Deserialize, Default)]
-struct WindowSettings {
-    position: WindowPosition,
-    resolution: WindowResolution,
 }
 
 fn spawn(
@@ -70,25 +51,6 @@ fn spawn(
         transform: Transform::from_translation(Vec3::new(-50.0, -50.0, -0.01)),
         ..default()
     });
-}
-
-fn watch_window(
-    window: Query<&Window, With<PrimaryWindow>>,
-    window_moved: EventReader<WindowMoved>,
-    window_resized: EventReader<WindowResized>,
-) {
-    let Ok(window) = window.get_single() else {
-        return;
-    };
-    if window_moved.is_empty() && window_resized.is_empty() {
-        return;
-    }
-    let settings = WindowSettings {
-        position: window.position,
-        resolution: (window.width(), window.height()).into(),
-    };
-    let settings = serde_json::to_string(&settings).ok();
-    settings.and_then(|s| std::fs::write("window.json", s).ok());
 }
 
 #[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
