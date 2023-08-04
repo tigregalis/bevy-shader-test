@@ -48,7 +48,7 @@ fn spawn(
     commands.spawn(MaterialMesh2dBundle {
         mesh,
         material,
-        transform: Transform::from_translation(Vec3::new(-50.0, -50.0, -0.01)),
+        transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
         ..default()
     });
 }
